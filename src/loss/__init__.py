@@ -1,1 +1,1 @@
-from src.loss.example import ExampleLoss
+from src.loss.hifi_gan_loss import HiFiGANLoss

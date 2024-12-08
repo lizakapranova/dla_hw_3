@@ -1,4 +1,5 @@
 import warnings
+from itertools import chain
 
 import hydra
 import torch
@@ -12,10 +13,10 @@ from src.utils.init_utils import set_random_seed, setup_saving_and_logging
 warnings.filterwarnings("ignore", category=UserWarning)
 
 
-@hydra.main(version_base=None, config_path="src/configs", config_name="baseline")
+@hydra.main(version_base=None, config_path="src/configs", config_name="hifi_gan")
 def main(config):
     """
-    Main script for training. Instantiates the model, optimizer, scheduler,
+    Main script for training. Instantiates the model, generator_optimizer, scheduler,
     metrics, logger, writer, and dataloaders. Runs Trainer to train and
     evaluate the model.
 
@@ -45,30 +46,23 @@ def main(config):
     loss_function = instantiate(config.loss_function).to(device)
     metrics = instantiate(config.metrics)
 
-    # build optimizer, learning rate scheduler
-    trainable_params = filter(lambda p: p.requires_grad, model.parameters())
-    optimizer = instantiate(config.optimizer, params=trainable_params)
-    lr_scheduler = instantiate(config.lr_scheduler, optimizer=optimizer)
+    # build generator_optimizer, learning rate scheduler
+    generator_trainable_params = filter(lambda p: p.requires_grad, model.gen.parameters())
+    discriminator_trainable_params = filter(lambda p: p.requires_grad, chain(model.msd.parameters(), model.mpd.parameters()))
+
+    generator_optimizer = config.init_obj(config["generator_optimizer"], torch.optim, generator_trainable_params)
+    discriminator_optimizer = config.init_obj(config["discriminator_optimizer"], torch.optim, discriminator_trainable_params)
+
+    generator_scheduler = config.init_obj(config["generator_scheduler"], torch.optim.lr_scheduler, generator_optimizer)
+    discriminator_scheduler = config.init_obj(config["discriminator_scheduler"], torch.optim.lr_scheduler, discriminator_optimizer)
 
     # epoch_len = number of iterations for iteration-based training
     # epoch_len = None or len(dataloader) for epoch-based training
     epoch_len = config.trainer.get("epoch_len")
 
-    trainer = Trainer(
-        model=model,
-        criterion=loss_function,
-        metrics=metrics,
-        optimizer=optimizer,
-        lr_scheduler=lr_scheduler,
-        config=config,
-        device=device,
-        dataloaders=dataloaders,
-        epoch_len=epoch_len,
-        logger=logger,
-        writer=writer,
-        batch_transforms=batch_transforms,
-        skip_oom=config.trainer.get("skip_oom", True),
-    )
+    trainer = Trainer(model=model, criterion=loss_function, generator_optimizer=generator_optimizer, discriminator_optimizer=discriminator_optimizer,
+                      generator_scheduler=generator_scheduler, discriminator_scheduler=discriminator_scheduler, config=config, device=device,
+                      dataloaders=dataloaders, logger=logger, writer=writer, skip_oom=config.trainer.get("skip_oom", True))
 
     trainer.train()
 

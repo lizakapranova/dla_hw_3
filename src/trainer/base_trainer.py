@@ -7,6 +7,7 @@ from tqdm.auto import tqdm
 
 from src.datasets.data_utils import inf_loop
 from src.metrics.tracker import MetricTracker
+from src.model.hifi_gan import HiFiGAN
 from src.utils.consts import ROOT_PATH
 
 
@@ -17,11 +18,13 @@ class BaseTrainer:
 
     def __init__(
         self,
-        model,
+        model: HiFiGAN,
         criterion,
         metrics,
-        optimizer,
-        lr_scheduler,
+        generator_optimizer,
+        discriminator_optimizer,
+        generator_scheduler,
+        discriminator_scheduler,
         config,
         device,
         dataloaders,
@@ -38,9 +41,9 @@ class BaseTrainer:
             metrics (dict): dict with the definition of metrics for training
                 (metrics[train]) and inference (metrics[inference]). Each
                 metric is an instance of src.metrics.BaseMetric.
-            optimizer (Optimizer): optimizer for the model.
-            lr_scheduler (LRScheduler): learning rate scheduler for the
-                optimizer.
+            generator_optimizer (Optimizer): generator_optimizer for the model.
+            generator_scheduler (LRScheduler): learning rate scheduler for the
+                generator_optimizer.
             config (DictConfig): experiment config containing training config.
             device (str): device for tensors and model.
             dataloaders (dict[DataLoader]): dataloaders for different
@@ -68,8 +71,10 @@ class BaseTrainer:
 
         self.model = model
         self.criterion = criterion
-        self.optimizer = optimizer
-        self.lr_scheduler = lr_scheduler
+        self.generator_optimizer = generator_optimizer
+        self.discriminator_optimizer = discriminator_optimizer
+        self.generator_scheduler = generator_scheduler
+        self.discriminator_scheduler = discriminator_scheduler
         self.batch_transforms = batch_transforms
 
         # define dataloaders
@@ -467,7 +472,7 @@ class BaseTrainer:
             "arch": arch,
             "epoch": epoch,
             "state_dict": self.model.state_dict(),
-            "optimizer": self.optimizer.state_dict(),
+            "generator_optimizer": self.generator_optimizer.state_dict(),
             "lr_scheduler": self.lr_scheduler.state_dict(),
             "monitor_best": self.mnt_best,
             "config": self.config,
@@ -511,9 +516,9 @@ class BaseTrainer:
             )
         self.model.load_state_dict(checkpoint["state_dict"])
 
-        # load optimizer state from checkpoint only when optimizer type is not changed.
+        # load generator_optimizer state from checkpoint only when generator_optimizer type is not changed.
         if (
-            checkpoint["config"]["optimizer"] != self.config["optimizer"]
+            checkpoint["config"]["generator_optimizer"] != self.config["generator_optimizer"]
             or checkpoint["config"]["lr_scheduler"] != self.config["lr_scheduler"]
         ):
             self.logger.warning(
@@ -522,7 +527,7 @@ class BaseTrainer:
                 "are not resumed."
             )
         else:
-            self.optimizer.load_state_dict(checkpoint["optimizer"])
+            self.generator_optimizer.load_state_dict(checkpoint["generator_optimizer"])
             self.lr_scheduler.load_state_dict(checkpoint["lr_scheduler"])
 
         self.logger.info(

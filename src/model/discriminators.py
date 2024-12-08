@@ -47,23 +47,19 @@ class MultiScaleDiscriminator(nn.Module):
             nn.AvgPool1d(4, 2, padding=2)
         ])
 
-    def forward(self, y, y_hat):
-        y_d_rs = []
-        y_d_gs = []
-        fmap_rs = []
-        fmap_gs = []
-        for i, d in enumerate(self.discriminators):
+    def forward(self, x, tag):
+        logits, activation_layers = [], []
+        for i, discriminator in enumerate(self.discriminators):
             if i != 0:
-                y = self.meanpools[i - 1](y)
-                y_hat = self.meanpools[i - 1](y_hat)
-            y_d_r, fmap_r = d(y)
-            y_d_g, fmap_g = d(y_hat)
-            y_d_rs.append(y_d_r)
-            fmap_rs.append(fmap_r)
-            y_d_gs.append(y_d_g)
-            fmap_gs.append(fmap_g)
+                x = self.meanpools[i - 1](x)
+            logit, alayers = discriminator(x)
+            logits.append(logit)
+            activation_layers += alayers
 
-        return y_d_rs, y_d_gs, fmap_rs, fmap_gs
+        return {
+                f"{tag}_msd_activation_layers": activation_layers,
+                f"{tag}_msd_logits": logits
+            }
 
 
 class PeriodDiscriminator(nn.Module):
@@ -112,17 +108,14 @@ class MultiPeriodDiscriminator(nn.Module):
             PeriodDiscriminator(period=11),
         ])
 
-    def forward(self, y, y_hat):
-        y_d_rs = []
-        y_d_gs = []
-        fmap_rs = []
-        fmap_gs = []
-        for i, d in enumerate(self.discriminators):
-            y_d_r, fmap_r = d(y)
-            y_d_g, fmap_g = d(y_hat)
-            y_d_rs.append(y_d_r)
-            fmap_rs.append(fmap_r)
-            y_d_gs.append(y_d_g)
-            fmap_gs.append(fmap_g)
+    def forward(self, x, tag):
+        logits, activation_layers = [], []
+        for discriminator in self.discriminators:
+            logit, alayers = discriminator(x)
+            logits.append(logit)
+            activation_layers += alayers
 
-        return y_d_rs, y_d_gs, fmap_rs, fmap_gs
+        return {
+            f"{tag}_mpd_activation_layers": activation_layers,
+            f"{tag}_mpd_logits": logits
+        }

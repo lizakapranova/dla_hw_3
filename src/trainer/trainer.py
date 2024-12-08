@@ -1,4 +1,10 @@
+from itertools import chain
+
+import torch
+
+from src.datasets.data_utils import inf_loop
 from src.metrics.tracker import MetricTracker
+from src.model.hifi_gan import HiFiGAN
 from src.trainer.base_trainer import BaseTrainer
 
 
@@ -6,6 +12,56 @@ class Trainer(BaseTrainer):
     """
     Trainer class. Defines the logic of batch logging and processing.
     """
+
+    def __init__(
+            self,
+            model: HiFiGAN,
+            criterion,
+            metrics,
+            generator_optimizer,
+            discriminator_optimizer,
+            generator_scheduler,
+            discriminator_scheduler,
+            config,
+            device,
+            dataloaders,
+            logger,
+            writer,
+            len_epoch=None,
+            skip_oom=True,
+    ):
+        super().__init__(model,
+                         criterion,
+                         metrics,
+                         generator_optimizer,
+                         discriminator_optimizer,
+                         generator_scheduler,
+                         discriminator_scheduler,
+                         config, device, dataloaders, logger, writer)
+        self.skip_oom = skip_oom
+        self.config = config
+        self.train_dataloader = dataloaders["train"]
+        if len_epoch is None:
+            # epoch-based training
+            self.len_epoch = len(self.train_dataloader)
+        else:
+            # iteration-based training
+            self.train_dataloader = inf_loop(self.train_dataloader)
+            self.len_epoch = len_epoch
+        self.evaluation_dataloaders = {k: v for k, v in dataloaders.items() if k != "train"}
+
+        if self.len_epoch == 1:
+            self.log_step = 1
+        else:
+            self.log_step = 50
+
+        print('self.log_step:', self.log_step)
+        print('self.len_epoch:', self.len_epoch)
+
+        metric_keys = ["G_loss", "mel_loss", "fm_loss", "adv_loss", "D_loss"]
+        self.train_metrics = MetricTracker(
+            "G_grad_norm", "D_grad_norm", *[m for m in metric_keys], writer=self.writer
+        )
 
     def process_batch(self, batch, metrics: MetricTracker):
         """
@@ -32,27 +88,36 @@ class Trainer(BaseTrainer):
         metric_funcs = self.metrics["inference"]
         if self.is_train:
             metric_funcs = self.metrics["train"]
-            self.optimizer.zero_grad()
+            self.discriminator_optimizer.zero_grad()
 
-        outputs = self.model(**batch)
-        batch.update(outputs)
+        gen_outputs = self.model.generator(**batch)
+        batch.update(gen_outputs)
 
-        all_losses = self.criterion(**batch)
-        batch.update(all_losses)
+        dis_outputs = self.model.discriminator(audios=batch['target_mel'], generated_wavs=batch['gened_wavs'].detach())
+        batch.update(dis_outputs)
 
-        if self.is_train:
-            batch["loss"].backward()  # sum of all losses is always called loss
-            self._clip_grad_norm()
-            self.optimizer.step()
-            if self.lr_scheduler is not None:
-                self.lr_scheduler.step()
+        discriminator_loss = self.criterion.discriminator_loss(**batch)
+        batch.update(discriminator_loss)
+        discriminator_loss["discriminator_loss"].backward()
+        self.discriminator_optimizer.step()
+        batch["discriminator_grad_norm"] = self._get_grad_norm(chain(self.model.multi_scale_discriminator.parameters(), self.model.multi_period_discriminator.parameters()))
 
-        # update metrics for each loss (in case of multiple losses)
-        for loss_name in self.config.writer.loss_names:
-            metrics.update(loss_name, batch[loss_name].item())
+        # G optimizing
+        self.generator_optimizer.zero_grad()
 
-        for met in metric_funcs:
-            metrics.update(met.name, met(**batch))
+        discriminator_outputs = self.model.discriminator(**batch)
+        batch.update(discriminator_outputs)
+
+        generator_loss = self.criterion.generator_loss(**batch)
+        batch.update(generator_loss)
+        generator_loss["generator_loss"].backward()
+        self.generator_optimizer.step()
+        batch["generator_grad_norm"] = self._get_grad_norm(self.model.gen.parameters())
+
+        for k, v in batch.items():
+            if "loss" in k or "grad_norm" in k:
+                metrics.update(k, v.item())
+
         return batch
 
     def _log_batch(self, batch_idx, batch, mode="train"):

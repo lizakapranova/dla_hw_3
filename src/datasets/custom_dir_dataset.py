@@ -41,7 +41,7 @@ class CustomDirDataset(BaseDataset):
         texts_dir = ROOT_PATH / self.dataset_dir / 'texts'
         wavs_dir = ROOT_PATH / self.dataset_dir / 'wavs'
         with open(metadata_file, 'r') as rfile:
-            reader = csv.reader(rfile, delimiter='0x7c')
+            reader = csv.reader(rfile, delimiter='|')
             for name, text in tqdm(reader):
                 text_file = texts_dir / f'Utterance_{name[2:]}.txt'
                 with open(text_file, 'w') as wfile:
