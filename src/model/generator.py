@@ -25,33 +25,16 @@ class ResBlock(nn.Module):
             ) for i in range(conv_layers)]
         )
 
-        # self.leaky_relu2 = nn.ModuleList([nn.LeakyReLU(LEAKY_RELU_SLOPE) for _ in range(conv_layers)])
-        # self.convs2 = nn.ModuleList(
-        #     [weight_norm(
-        #         nn.Conv1d(
-        #             channels,
-        #             channels,
-        #             kernel_size,
-        #             stride=1,
-        #             dilation=1,
-        #             padding="same"
-        #         )
-        #     ) for _ in range(conv_layers)]
-        # )
-
     def forward(self, x):
         for lr1, conv1 in zip(self.leaky_relu1,
                               self.convs1):  # lr2, conv2 in zip(self.leaky_relu1, self.convs1, self.leaky_relu2, self.convs2):
             xt = conv1(lr1(x))
-            # xt = conv2(lr2(xt))
             x += xt
         return x
 
     def remove_weight_norm(self):
         for layer in self.convs1 + self.convs2:
             remove_weight_norm(layer)
-        # for layer in self.convs2:
-        #     remove_weight_norm(layer)
 
 
 class MultiReceptiveFieldFusion(nn.Module):
