@@ -2,7 +2,6 @@ import torch
 from torch import nn
 from torch.nn.utils import weight_norm, remove_weight_norm
 
-from src.model.utils import calculate_padding
 from src.utils.consts import LEAKY_RELU_SLOPE
 
 
@@ -20,31 +19,31 @@ class ResBlock(nn.Module):
                     channels,
                     channels,
                     kernel_size,
-                    stride=1,
                     dilation=dilation[i],
-                    padding=calculate_padding(kernel_size, dilation[i])
+                    padding='same'
                 )
             ) for i in range(conv_layers)]
         )
 
-        self.leaky_relu2 = nn.ModuleList([nn.LeakyReLU(LEAKY_RELU_SLOPE) for _ in range(conv_layers)])
-        self.convs2 = nn.ModuleList(
-            [weight_norm(
-                nn.Conv1d(
-                    channels,
-                    channels,
-                    kernel_size,
-                    stride=1,
-                    dilation=dilation[i],
-                    padding=calculate_padding(kernel_size, 1)
-                )
-            ) for i in range(conv_layers)]
-        )
+        # self.leaky_relu2 = nn.ModuleList([nn.LeakyReLU(LEAKY_RELU_SLOPE) for _ in range(conv_layers)])
+        # self.convs2 = nn.ModuleList(
+        #     [weight_norm(
+        #         nn.Conv1d(
+        #             channels,
+        #             channels,
+        #             kernel_size,
+        #             stride=1,
+        #             dilation=1,
+        #             padding="same"
+        #         )
+        #     ) for _ in range(conv_layers)]
+        # )
 
     def forward(self, x):
-        for lr1, conv1, lr2, conv2 in zip(self.leaky_relu1, self.convs1, self.leaky_relu2, self.convs2):
+        for lr1, conv1 in zip(self.leaky_relu1,
+                              self.convs1):  # lr2, conv2 in zip(self.leaky_relu1, self.convs1, self.leaky_relu2, self.convs2):
             xt = conv1(lr1(x))
-            xt = conv2(lr2(xt))
+            # xt = conv2(lr2(xt))
             x += xt
         return x
 
@@ -56,49 +55,49 @@ class ResBlock(nn.Module):
 
 
 class MultiReceptiveFieldFusion(nn.Module):
-    def __init__(self, kernel_sizes, rates, initial_channels, dilation_sizes):
+    def __init__(self, kernel_sizes, initial_channels, dilation_sizes):
         super(MultiReceptiveFieldFusion, self).__init__()
-        self.num_upsamples = len(rates)
         self.num_kernels = len(kernel_sizes)
-        self.ups = nn.ModuleList()
-        for i, (rate, kernel_size) in enumerate(zip(rates, kernel_sizes)):
-            self.ups.append(weight_norm(
-                nn.ConvTranspose1d(initial_channels // (2 ** i), initial_channels // (2 ** (i + 1)),
-                                   kernel_size, rate, padding=(kernel_size - rate) // 2)))
-        self.leaky_relus = nn.ModuleList([nn.LeakyReLU(LEAKY_RELU_SLOPE) for _ in range(self.num_upsamples)])
 
         self.resblocks = nn.ModuleList()
-        for i in range(len(self.ups)):
-            ch = initial_channels // (2 ** (i + 1))
-            for j, (kernel_size, d) in enumerate(zip(kernel_sizes, dilation_sizes)):
-                self.resblocks.append(ResBlock(ch, kernel_size=kernel_size, dilation=d))
+        for kernel_size, d in zip(kernel_sizes, dilation_sizes):
+            self.resblocks.append(ResBlock(initial_channels, kernel_size=kernel_size, dilation=d))
 
     def forward(self, x):
-        for i in range(self.num_upsamples):
-            x = self.leaky_relus[i](x)
-            x = self.ups[i](x)
-            xs = None
-            for j in range(self.num_kernels):
-                if xs is None:
-                    xs = self.resblocks[i * self.num_kernels + j](x)
-                else:
-                    xs += self.resblocks[i * self.num_kernels + j](x)
-            x = xs / self.num_kernels
+        xs = None
+        for i in range(self.num_kernels):
+            if xs is None:
+                xs = self.resblocks[i](x)
+            else:
+                xs += self.resblocks[i](x)
         return x
 
 
 class Generator(nn.Module):
-    def __init__(self, mrff: MultiReceptiveFieldFusion, num_kernels: int, initial_channels: int):
+    def __init__(self, kernel_sizes, initial_channels: int, dilation_sizes):
         super(Generator, self).__init__()
         self.conv_pre = weight_norm(nn.Conv1d(80, initial_channels, 7, 1, padding=3))
-        self.multi_receptive_field_fusion = mrff
+        self.multi_receptive_field_fusion = nn.ModuleList(
+            [MultiReceptiveFieldFusion(kernel_sizes, initial_channels // (2 ** (l + 1)), dilation_sizes) for l in
+             range(len(kernel_sizes))])
         self.leaky_relu_post = nn.LeakyReLU()
-        channels = initial_channels // (2 ** num_kernels)
+        channels = initial_channels // (2 ** len(kernel_sizes))
+        self.leaky_relus = nn.ModuleList([nn.LeakyReLU(LEAKY_RELU_SLOPE) for _ in range(len(kernel_sizes))])
+        self.convs = nn.ModuleList([nn.ConvTranspose1d(
+            in_channels=(initial_channels // (2 ** l)),
+            out_channels=(initial_channels // (2 ** (l + 1))),
+            padding=(kernel_sizes[l] - kernel_sizes[l] // 2) // 2,
+            kernel_size=kernel_sizes[l],
+            stride=(kernel_sizes[l] // 2),
+        ) for l in range(len(kernel_sizes))])
         self.conv_post = weight_norm(nn.Conv1d(channels, 1, 7, 1, padding=3))
 
     def forward(self, x):
         x = self.conv_pre(x)
-        x = self.multi_receptive_field_fusion(x)
+        for leaky_relu, conv, mrf in zip(self.leaky_relus, self.convs, self.multi_receptive_field_fusion):
+            x = leaky_relu(x)
+            x = conv(x)
+            x = mrf(x)
         x = self.leaky_relu_post(x)
         x = self.conv_post(x)
         x = torch.tanh(x)

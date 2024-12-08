@@ -19,3 +19,4 @@ omegaconf
 pillow
 soundfile
 transformers
+urllib3

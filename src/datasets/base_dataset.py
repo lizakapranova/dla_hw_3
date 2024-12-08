@@ -70,7 +70,7 @@ class BaseDataset(Dataset):
         """
         Get length of the dataset (length of the index).
         """
-        return len(self._index)
+        return len(self._index[self.part])
 
     def load_object(self, path):
         """
@@ -141,24 +141,12 @@ class BaseDataset(Dataset):
         """
         for part_name, part in index.items():
             for entry in part:
-                assert "audio_path" in entry, (
-                    "Each dataset item should include field 'audio_path'" " - path to audio file."
-                )
                 assert "audio" in entry, (
-                    "Each dataset item should include field 'audio'"
-                    " - audio object."
+                    "Each dataset item should include field 'audio_path'" " - path to audio file."
                 )
                 assert "text" in entry, (
                     "Each dataset item should include field 'text'"
-                    " - text for audio."
-                )
-                assert "target_mel" in entry, (
-                    "Each dataset item should include field 'target_mel'"
-                    " - mel spectrogram for audio."
-                )
-                assert "tokenized_text" in entry, (
-                    "Each dataset item should include field 'tokenized_text'"
-                    " - tokenized text object."
+                    " - text to text file."
                 )
 
     @staticmethod
@@ -198,5 +186,5 @@ class BaseDataset(Dataset):
             random.shuffle(index[self.part])
 
         if limit is not None:
-            index = index[self.part][:limit]
+            index[self.part] = index[self.part][:limit]
         return index

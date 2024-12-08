@@ -1,3 +1,4 @@
+import os
 import warnings
 from itertools import chain
 
@@ -5,12 +6,14 @@ import hydra
 import torch
 from hydra.utils import instantiate
 from omegaconf import OmegaConf
+from urllib3.exceptions import NotOpenSSLWarning
 
 from src.datasets.data_utils import get_dataloaders
 from src.trainer import Trainer
 from src.utils.init_utils import set_random_seed, setup_saving_and_logging
 
 warnings.filterwarnings("ignore", category=UserWarning)
+warnings.filterwarnings("ignore", category=NotOpenSSLWarning)
 
 
 @hydra.main(version_base=None, config_path="src/configs", config_name="hifi_gan")
@@ -48,24 +51,30 @@ def main(config):
 
     # build generator_optimizer, learning rate scheduler
     generator_trainable_params = filter(lambda p: p.requires_grad, model.gen.parameters())
-    discriminator_trainable_params = filter(lambda p: p.requires_grad, chain(model.msd.parameters(), model.mpd.parameters()))
+    discriminator_trainable_params = filter(lambda p: p.requires_grad,
+                                            chain(model.multi_scale_discriminator.parameters(),
+                                                  model.multi_period_discriminator.parameters()))
 
-    generator_optimizer = config.init_obj(config["generator_optimizer"], torch.optim, generator_trainable_params)
-    discriminator_optimizer = config.init_obj(config["discriminator_optimizer"], torch.optim, discriminator_trainable_params)
+    generator_optimizer = instantiate(config.generator_optimizer, params=generator_trainable_params)
+    discriminator_optimizer = instantiate(config.discriminator_optimizer, params=discriminator_trainable_params)
 
-    generator_scheduler = config.init_obj(config["generator_scheduler"], torch.optim.lr_scheduler, generator_optimizer)
-    discriminator_scheduler = config.init_obj(config["discriminator_scheduler"], torch.optim.lr_scheduler, discriminator_optimizer)
+    generator_scheduler = instantiate(config.generator_scheduler, optimizer=generator_optimizer)
+    discriminator_scheduler = instantiate(config.discriminator_scheduler, optimizer=discriminator_optimizer)
 
     # epoch_len = number of iterations for iteration-based training
     # epoch_len = None or len(dataloader) for epoch-based training
     epoch_len = config.trainer.get("epoch_len")
 
-    trainer = Trainer(model=model, criterion=loss_function, generator_optimizer=generator_optimizer, discriminator_optimizer=discriminator_optimizer,
-                      generator_scheduler=generator_scheduler, discriminator_scheduler=discriminator_scheduler, config=config, device=device,
-                      dataloaders=dataloaders, logger=logger, writer=writer, skip_oom=config.trainer.get("skip_oom", True))
+    trainer = Trainer(model=model, criterion=loss_function, metrics=metrics, generator_optimizer=generator_optimizer,
+                      discriminator_optimizer=discriminator_optimizer,
+                      generator_scheduler=generator_scheduler, discriminator_scheduler=discriminator_scheduler,
+                      config=config, device=device,
+                      dataloaders=dataloaders, logger=logger, writer=writer,
+                      skip_oom=config.trainer.get("skip_oom", True))
 
     trainer.train()
 
 
 if __name__ == "__main__":
+    os.environ['HYDRA_FULL_ERROR'] = '1'
     main()

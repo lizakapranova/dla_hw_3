@@ -1,7 +1,5 @@
 from itertools import chain
 
-import torch
-
 from src.datasets.data_utils import inf_loop
 from src.metrics.tracker import MetricTracker
 from src.model.hifi_gan import HiFiGAN
@@ -83,7 +81,7 @@ class Trainer(BaseTrainer):
                 model outputs, and losses.
         """
         batch = self.move_batch_to_device(batch)
-        batch = self.transform_batch(batch)  # transform batch on device -- faster
+        # batch = self.transform_batch(batch)  # transform batch on device -- faster
 
         metric_funcs = self.metrics["inference"]
         if self.is_train:
@@ -93,14 +91,14 @@ class Trainer(BaseTrainer):
         gen_outputs = self.model.generator(**batch)
         batch.update(gen_outputs)
 
-        dis_outputs = self.model.discriminator(audios=batch['target_mel'], generated_wavs=batch['gened_wavs'].detach())
+        dis_outputs = self.model.discriminator(audios=batch['target_mel'], generated_wavs=batch['generated_wavs'].detach())
         batch.update(dis_outputs)
 
         discriminator_loss = self.criterion.discriminator_loss(**batch)
         batch.update(discriminator_loss)
         discriminator_loss["discriminator_loss"].backward()
         self.discriminator_optimizer.step()
-        batch["discriminator_grad_norm"] = self._get_grad_norm(chain(self.model.multi_scale_discriminator.parameters(), self.model.multi_period_discriminator.parameters()))
+        batch["discriminator_grad_norm"] = self._get_grad_norm('discriminator')
 
         # G optimizing
         self.generator_optimizer.zero_grad()
@@ -112,7 +110,7 @@ class Trainer(BaseTrainer):
         batch.update(generator_loss)
         generator_loss["generator_loss"].backward()
         self.generator_optimizer.step()
-        batch["generator_grad_norm"] = self._get_grad_norm(self.model.gen.parameters())
+        batch["generator_grad_norm"] = self._get_grad_norm('generator')
 
         for k, v in batch.items():
             if "loss" in k or "grad_norm" in k:

@@ -1,4 +1,5 @@
 from abc import abstractmethod
+from itertools import chain
 
 import torch
 from numpy import inf
@@ -389,7 +390,7 @@ class BaseTrainer:
             )
 
     @torch.no_grad()
-    def _get_grad_norm(self, norm_type=2):
+    def _get_grad_norm(self, type_, norm_type=2):
         """
         Calculates the gradient norm for logging.
 
@@ -398,7 +399,13 @@ class BaseTrainer:
         Returns:
             total_norm (float): the calculated norm.
         """
-        parameters = self.model.parameters()
+        if type_ == 'discriminator':
+            parameters = chain(self.model.multi_scale_discriminator.parameters(),
+                            self.model.multi_period_discriminator.parameters())
+        elif type_ == 'generator':
+            parameters = self.model.gen.parameters()
+        else:
+            raise ValueError()
         if isinstance(parameters, torch.Tensor):
             parameters = [parameters]
         parameters = [p for p in parameters if p.grad is not None]

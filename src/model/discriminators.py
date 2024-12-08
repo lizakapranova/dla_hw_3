@@ -67,10 +67,10 @@ class PeriodDiscriminator(nn.Module):
         super().__init__(*args, **kwargs)
         self.period = period
         self.convs = nn.ModuleList([
-            weight_norm(nn.Conv2d(1, 32, (kernel_size, 1), (stride, 1), padding=(calculate_padding(5, 1), 0))),
-            weight_norm(nn.Conv2d(32, 128, (kernel_size, 1), (stride, 1), padding=(calculate_padding(5, 1), 0))),
-            weight_norm(nn.Conv2d(128, 512, (kernel_size, 1), (stride, 1), padding=(calculate_padding(5, 1), 0))),
-            weight_norm(nn.Conv2d(512, 1024, (kernel_size, 1), (stride, 1), padding=(calculate_padding(5, 1), 0))),
+            weight_norm(nn.Conv2d(1, 32, (kernel_size, 1), (stride, 1), padding=(2, 0))),
+            weight_norm(nn.Conv2d(32, 128, (kernel_size, 1), (stride, 1), padding=(2, 0))),
+            weight_norm(nn.Conv2d(128, 512, (kernel_size, 1), (stride, 1), padding=(2, 0))),
+            weight_norm(nn.Conv2d(512, 1024, (kernel_size, 1), (stride, 1), padding=(2, 0))),
             weight_norm(nn.Conv2d(1024, 1024, (kernel_size, 1), 1, padding=(2, 0))),
         ])
         self.leaky_relus = nn.ModuleList([nn.LeakyReLU(LEAKY_RELU_SLOPE) for _ in range(len(self.convs))])
