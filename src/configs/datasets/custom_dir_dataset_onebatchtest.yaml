@@ -1,0 +1,11 @@
+train:
+  _target_: src.datasets.CustomDirDataset
+  dataset_dir: 'LJSpeech-1.1'
+  part: 'train'
+  limit: 12
+
+val:
+  _target_: src.datasets.CustomDirDataset
+  dataset_dir: 'LJSpeech-1.1'
+  part: 'val'
+  limit: 12

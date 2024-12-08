@@ -3,7 +3,8 @@ import torch
 from tqdm.auto import tqdm
 
 from src.datasets.base_dataset import BaseDataset
-from src.utils.io_utils import ROOT_PATH, read_json, write_json
+from src.utils.io_utils import read_json, write_json
+from src.utils.consts import ROOT_PATH
 
 
 class ExampleDataset(BaseDataset):

@@ -7,7 +7,7 @@ from tqdm.auto import tqdm
 
 from src.datasets.data_utils import inf_loop
 from src.metrics.tracker import MetricTracker
-from src.utils.io_utils import ROOT_PATH
+from src.utils.consts import ROOT_PATH
 
 
 class BaseTrainer:

@@ -11,7 +11,7 @@ import torch
 from omegaconf import OmegaConf
 
 from src.logger.logger import setup_logging
-from src.utils.io_utils import ROOT_PATH
+from src.utils.consts import ROOT_PATH
 
 
 def set_worker_seed(worker_id):

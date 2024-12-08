@@ -18,11 +18,11 @@ class BaseDataset(Dataset):
     """
 
     def __init__(
-        self, index, limit=None, shuffle_index=False, instance_transforms=None
+        self, index, part='train', limit=None, shuffle_index=False, instance_transforms=None
     ):
         """
         Args:
-            index (list[dict]): list, containing dict for each element of
+            index (dict[str, list[dict]]): list, containing dict for each element of
                 the dataset. The dict has required metadata information,
                 such as label and object path.
             limit (int | None): if not None, limit the total number of elements
@@ -34,9 +34,10 @@ class BaseDataset(Dataset):
                 tensor name.
         """
         self._assert_index_is_valid(index)
+        self.part = part
 
         index = self._shuffle_and_limit_index(index, limit, shuffle_index)
-        self._index: List[dict] = index
+        self._index: dict[str, List[dict]] = index
 
         self.instance_transforms = instance_transforms
 
@@ -134,18 +135,31 @@ class BaseDataset(Dataset):
         conditions.
 
         Args:
-            index (list[dict]): list, containing dict for each element of
+            index (dict[str, list[dict]]): list, containing dict for each element of
                 the dataset. The dict has required metadata information,
                 such as label and object path.
         """
-        for entry in index:
-            assert "path" in entry, (
-                "Each dataset item should include field 'path'" " - path to audio file."
-            )
-            assert "label" in entry, (
-                "Each dataset item should include field 'label'"
-                " - object ground-truth label."
-            )
+        for part_name, part in index.items():
+            for entry in part:
+                assert "audio_path" in entry, (
+                    "Each dataset item should include field 'audio_path'" " - path to audio file."
+                )
+                assert "audio" in entry, (
+                    "Each dataset item should include field 'audio'"
+                    " - audio object."
+                )
+                assert "text" in entry, (
+                    "Each dataset item should include field 'text'"
+                    " - text for audio."
+                )
+                assert "target_mel" in entry, (
+                    "Each dataset item should include field 'target_mel'"
+                    " - mel spectrogram for audio."
+                )
+                assert "tokenized_text" in entry, (
+                    "Each dataset item should include field 'tokenized_text'"
+                    " - tokenized text object."
+                )
 
     @staticmethod
     def _sort_index(index):
@@ -166,13 +180,12 @@ class BaseDataset(Dataset):
         """
         return sorted(index, key=lambda x: x["KEY_FOR_SORTING"])
 
-    @staticmethod
-    def _shuffle_and_limit_index(index, limit, shuffle_index):
+    def _shuffle_and_limit_index(self, index, limit, shuffle_index):
         """
         Shuffle elements in index and limit the total number of elements.
 
         Args:
-            index (list[dict]): list, containing dict for each element of
+            index (dict[str, list[dict]]): list, containing dict for each element of
                 the dataset. The dict has required metadata information,
                 such as label and object path.
             limit (int | None): if not None, limit the total number of elements
@@ -182,8 +195,8 @@ class BaseDataset(Dataset):
         """
         if shuffle_index:
             random.seed(42)
-            random.shuffle(index)
+            random.shuffle(index[self.part])
 
         if limit is not None:
-            index = index[:limit]
+            index = index[self.part][:limit]
         return index

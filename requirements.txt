@@ -17,3 +17,5 @@ torchaudio
 librosa
 omegaconf
 pillow
+soundfile
+transformers
